@@ -1,0 +1,141 @@
+name: sre-incident-response-env
+version: "1.0.0"
+description: >
+  A real-world SRE (Site Reliability Engineer) incident response environment where
+  AI agents learn to triage production incidents: identify root causes, assess severity,
+  recommend immediate remediations, and write postmortem reports.
+author: Om Prakash Singh
+license: MIT
+tags:
+  - openenv
+  - sre
+  - incident-response
+  - postmortem
+  - devops
+  - real-world
+  - classification
+
+tasks:
+  - id: easy
+    name: "Incident Root Cause Classification"
+    difficulty: easy
+    description: "Identify the root cause of each production incident"
+    max_steps: 10
+
+  - id: medium
+    name: "Incident Triage and Response Planning"
+    difficulty: medium
+    description: "Identify root cause, assess severity, and select immediate remediation"
+    max_steps: 10
+
+  - id: hard
+    name: "Full Incident Response with Postmortem"
+    difficulty: hard
+    description: "Complete incident triage plus writing a full postmortem report"
+    max_steps: 5
+
+  - id: reproduce
+    name: "Failure Reproduction Steps"
+    difficulty: medium
+    description: "Identify root cause and provide step-by-step instructions to reproduce the failure"
+    max_steps: 5
+
+observation_space:
+  task_id:
+    type: string
+    description: "Current task identifier (easy/medium/hard)"
+  incident_id:
+    type: string
+    description: "Unique identifier for the current incident"
+  service_name:
+    type: string
+    description: "Name of the affected service"
+  alert_title:
+    type: string
+    description: "PagerDuty-style alert title"
+  alert_description:
+    type: string
+    description: "Alert body / description with incident details"
+  error_logs:
+    type: string
+    description: "Relevant log lines from the affected service"
+  metrics:
+    type: object
+    description: "Key service metrics at time of incident (dict of name -> value)"
+  recent_changes:
+    type: string
+    description: "Recent deployments or configuration changes"
+  on_call_notes:
+    type: string
+    description: "Context notes from the previous on-call engineer"
+  step_count:
+    type: integer
+    description: "Current step number in the episode"
+  max_steps:
+    type: integer
+    description: "Maximum steps allowed in this episode"
+  task_description:
+    type: string
+    description: "Natural language description of what the agent must do"
+
+action_space:
+  root_cause:
+    type: string
+    enum:
+      - out_of_memory
+      - disk_full
+      - service_crash
+      - config_error
+      - network_timeout
+      - dependency_failure
+      - traffic_spike
+      - deployment_failure
+      - resource_leak
+      - certificate_expired
+    description: "Root cause category of the incident"
+  severity:
+    type: string
+    enum: [p1, p2, p3, p4]
+    description: "Incident severity: p1=total outage, p2=major, p3=partial, p4=minor"
+  remediation:
+    type: string
+    enum:
+      - restart_service
+      - rollback_deployment
+      - scale_up
+      - clear_disk
+      - fix_config
+      - block_traffic
+      - failover
+      - renew_certificate
+      - investigate
+      - add_resources
+    description: "Immediate remediation action to take"
+  postmortem_summary:
+    type: string
+    nullable: true
+    description: "Postmortem write-up: timeline, root cause, fix, prevention (required for hard task)"
+  reproduction_steps:
+    type: string
+    nullable: true
+    description: "Numbered step-by-step instructions to reproduce the failure (required for reproduce task)"
+
+reward:
+  range: [0.0, 1.0]
+  type: dense
+  description: >
+    Per-step reward based on correctness of incident response decisions.
+    Easy: root cause accuracy (1.0).
+    Medium: weighted root cause (0.4) + severity (0.3) + remediation (0.3).
+    Hard: root cause (0.2) + severity (0.1) + remediation (0.1) + postmortem quality (0.6).
+    Invalid action fields incur 0.5x multiplier per invalid field.
+
+api:
+  health: "GET /health"
+  reset: "POST /reset"
+  step: "POST /step"
+  state: "GET /state"
+  websocket: "WS /ws"
+  tasks: "GET /tasks"
+  baseline: "POST /baseline"
+  grader: "POST /grader"

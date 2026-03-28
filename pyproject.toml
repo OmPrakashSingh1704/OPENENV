@@ -1,0 +1,29 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.backends.legacy:build"
+
+[project]
+name = "email-triage-env"
+version = "1.0.0"
+description = "A real-world OpenEnv environment for customer support email triage"
+readme = "README.md"
+license = { text = "MIT" }
+requires-python = ">=3.10"
+dependencies = [
+    "openenv-core>=0.2.2",
+    "fastapi>=0.109.0",
+    "uvicorn>=0.27.0",
+    "pydantic>=2.5.3",
+    "openai>=1.12.0",
+    "pyyaml>=6.0.1",
+    "python-dotenv>=1.0.0",
+    "httpx>=0.26.0",
+    "websockets>=12.0",
+]
+
+[project.optional-dependencies]
+dev = ["pytest", "httpx"]
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["environment*"]

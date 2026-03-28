@@ -1,0 +1,457 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>SRE Incident Response — OpenEnv</title>
+<style>
+  :root {
+    --bg: #0d1117;
+    --surface: #161b22;
+    --surface2: #1c2230;
+    --border: #30363d;
+    --text: #e6edf3;
+    --muted: #8b949e;
+    --accent: #58a6ff;
+    --green: #3fb950;
+    --yellow: #d29922;
+    --red: #f85149;
+    --orange: #f0883e;
+    --purple: #bc8cff;
+    --p1: #f85149;
+    --p2: #f0883e;
+    --p3: #d29922;
+    --p4: #3fb950;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { background: var(--bg); color: var(--text); font-family: 'Segoe UI', system-ui, sans-serif; font-size: 14px; line-height: 1.6; }
+
+  .app { display: grid; grid-template-rows: auto 1fr; min-height: 100vh; }
+  header { background: var(--surface); border-bottom: 1px solid var(--border); padding: 12px 24px; display: flex; align-items: center; gap: 16px; }
+  header h1 { font-size: 16px; font-weight: 600; }
+  header .badge { background: var(--accent); color: #0d1117; padding: 2px 8px; border-radius: 12px; font-size: 11px; font-weight: 700; }
+  .main { display: grid; grid-template-columns: 1fr 380px; height: calc(100vh - 49px); overflow: hidden; }
+
+  .incident-panel { padding: 20px; overflow-y: auto; display: flex; flex-direction: column; gap: 16px; }
+  .action-panel { background: var(--surface); border-left: 1px solid var(--border); padding: 20px; overflow-y: auto; display: flex; flex-direction: column; gap: 16px; }
+
+  .card { background: var(--surface2); border: 1px solid var(--border); border-radius: 8px; padding: 16px; }
+  .card-title { font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.06em; color: var(--muted); margin-bottom: 10px; }
+
+  .alert-banner { border-radius: 8px; padding: 14px 16px; border-left: 4px solid; }
+  .alert-banner.p1 { background: rgba(248,81,73,0.1); border-color: var(--p1); }
+  .alert-banner.p2 { background: rgba(240,136,62,0.1); border-color: var(--p2); }
+  .alert-banner.p3 { background: rgba(210,153,34,0.1); border-color: var(--p3); }
+  .alert-banner.p4 { background: rgba(63,185,80,0.1); border-color: var(--p4); }
+  .alert-title { font-size: 15px; font-weight: 600; margin-bottom: 6px; }
+  .alert-meta { font-size: 12px; color: var(--muted); display: flex; gap: 16px; flex-wrap: wrap; }
+
+  .dot { width: 8px; height: 8px; border-radius: 50%; display: inline-block; vertical-align: middle; }
+  .dot.p1 { background: var(--p1); animation: pulse 1.2s infinite; }
+  .dot.p2 { background: var(--p2); }
+  .dot.p3 { background: var(--p3); }
+  .dot.p4 { background: var(--p4); }
+  @keyframes pulse { 0%,100%{opacity:1} 50%{opacity:0.3} }
+
+  .log-box { background: #010409; border: 1px solid var(--border); border-radius: 6px; padding: 12px; font-family: 'Cascadia Code', 'Fira Code', monospace; font-size: 12px; white-space: pre-wrap; word-break: break-all; max-height: 200px; overflow-y: auto; }
+  .log-error { color: var(--red); }
+  .log-warn { color: var(--yellow); }
+  .log-info { color: var(--accent); }
+  .log-fatal { color: var(--p1); font-weight: 700; }
+  .log-default { color: #7ee787; }
+
+  .metrics-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+  .metric-item { background: var(--surface); border: 1px solid var(--border); border-radius: 6px; padding: 10px 12px; }
+  .metric-label { font-size: 11px; color: var(--muted); margin-bottom: 3px; text-transform: uppercase; letter-spacing: 0.04em; }
+  .metric-value { font-size: 12px; font-weight: 600; font-family: monospace; }
+
+  .form-group { display: flex; flex-direction: column; gap: 6px; }
+  .form-group label { font-size: 11px; font-weight: 600; color: var(--muted); text-transform: uppercase; letter-spacing: 0.04em; }
+  select, textarea { background: var(--surface2); border: 1px solid var(--border); color: var(--text); border-radius: 6px; padding: 8px 12px; font-size: 13px; font-family: inherit; width: 100%; transition: border-color 0.15s; }
+  select:focus, textarea:focus { outline: none; border-color: var(--accent); }
+  textarea { resize: vertical; font-family: 'Cascadia Code', monospace; font-size: 12px; }
+
+  .btn { display: inline-flex; align-items: center; justify-content: center; gap: 6px; padding: 9px 18px; border-radius: 6px; border: none; cursor: pointer; font-size: 13px; font-weight: 600; transition: all 0.15s; }
+  .btn:disabled { opacity: 0.4; cursor: not-allowed; }
+  .btn-primary { background: var(--accent); color: #0d1117; }
+  .btn-primary:hover:not(:disabled) { background: #79c0ff; }
+  .btn-ghost { background: transparent; color: var(--muted); border: 1px solid var(--border); }
+  .btn-ghost:hover:not(:disabled) { border-color: var(--accent); color: var(--accent); }
+  .btn-full { width: 100%; }
+
+  .task-tabs { display: flex; gap: 6px; }
+  .task-tab { padding: 6px 14px; border-radius: 6px; border: 1px solid var(--border); background: transparent; color: var(--muted); cursor: pointer; font-size: 12px; font-weight: 600; transition: all 0.15s; }
+  .task-tab.easy.active { background: var(--green); border-color: var(--green); color: #0d1117; }
+  .task-tab.medium.active { background: var(--yellow); border-color: var(--yellow); color: #0d1117; }
+  .task-tab.hard.active { background: var(--red); border-color: var(--red); color: #fff; }
+  .task-tab.reproduce.active { background: var(--purple); border-color: var(--purple); color: #fff; }
+
+  .result-card { border-radius: 8px; padding: 14px; border: 1px solid; }
+  .result-card.success { background: rgba(63,185,80,0.08); border-color: var(--green); }
+  .result-card.partial { background: rgba(210,153,34,0.08); border-color: var(--yellow); }
+  .result-card.fail { background: rgba(248,81,73,0.08); border-color: var(--red); }
+  .score-big { font-size: 32px; font-weight: 700; line-height: 1; }
+  .score-big.success { color: var(--green); }
+  .score-big.partial { color: var(--yellow); }
+  .score-big.fail { color: var(--red); }
+  .breakdown-row { display: flex; justify-content: space-between; font-size: 12px; padding: 3px 0; border-bottom: 1px solid rgba(255,255,255,0.05); }
+  .breakdown-row:last-child { border-bottom: none; }
+
+  .progress-bar { background: var(--border); border-radius: 4px; height: 6px; overflow: hidden; }
+  .progress-fill { height: 100%; border-radius: 4px; background: var(--accent); transition: width 0.3s; }
+  .step-indicator { font-size: 12px; color: var(--muted); display: flex; justify-content: space-between; margin-bottom: 6px; }
+
+  .episode-log { max-height: 200px; overflow-y: auto; display: flex; flex-direction: column; gap: 4px; }
+  .log-entry { font-size: 12px; display: flex; gap: 8px; padding: 5px 8px; border-radius: 4px; background: var(--bg); }
+  .log-entry .step-num { color: var(--muted); min-width: 42px; }
+  .log-entry .reward-val { font-family: monospace; font-weight: 600; min-width: 55px; }
+  .reward-val.pos { color: var(--green); }
+  .reward-val.mid { color: var(--yellow); }
+  .reward-val.neg { color: var(--red); }
+  .log-entry .fb { color: var(--muted); flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+  .status-bar { display: flex; align-items: center; gap: 8px; font-size: 12px; color: var(--muted); }
+  .status-dot { width: 6px; height: 6px; border-radius: 50%; background: var(--muted); }
+  .status-dot.connected { background: var(--green); }
+  .status-dot.error { background: var(--red); }
+
+  .empty-state { text-align: center; padding: 60px 24px; color: var(--muted); }
+  .empty-state .icon { font-size: 52px; margin-bottom: 12px; }
+  .empty-state h3 { color: var(--text); margin-bottom: 8px; font-size: 18px; }
+
+  .done-banner { background: linear-gradient(135deg, rgba(88,166,255,0.08), rgba(63,185,80,0.08)); border: 1px solid var(--accent); border-radius: 8px; padding: 24px; text-align: center; }
+  .done-banner h3 { color: var(--accent); margin-bottom: 8px; }
+  .final-score { font-size: 44px; font-weight: 700; }
+
+  ::-webkit-scrollbar { width: 6px; }
+  ::-webkit-scrollbar-track { background: transparent; }
+  ::-webkit-scrollbar-thumb { background: var(--border); border-radius: 3px; }
+</style>
+</head>
+<body>
+<div class="app">
+  <header>
+    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#58a6ff" stroke-width="2">
+      <circle cx="12" cy="12" r="3"/><path d="M12 2v3M12 19v3M4.22 4.22l2.12 2.12M17.66 17.66l2.12 2.12M2 12h3M19 12h3M4.22 19.78l2.12-2.12M17.66 6.34l2.12-2.12"/>
+    </svg>
+    <h1>SRE Incident Response</h1>
+    <span class="badge">OpenEnv</span>
+    <div style="flex:1"></div>
+    <div class="status-bar">
+      <div class="status-dot" id="statusDot"></div>
+      <span id="statusText">Ready</span>
+    </div>
+  </header>
+
+  <div class="main">
+    <div class="incident-panel" id="incidentPanel">
+      <div class="empty-state">
+        <div class="icon">🚨</div>
+        <h3>No Active Incident</h3>
+        <p>Select a task difficulty and click <strong>Start Episode</strong></p>
+      </div>
+    </div>
+
+    <div class="action-panel">
+
+      <div class="card">
+        <div class="card-title">Task Difficulty</div>
+        <div class="task-tabs">
+          <button class="task-tab easy active" onclick="selectTask('easy')">Easy</button>
+          <button class="task-tab medium" onclick="selectTask('medium')">Medium</button>
+          <button class="task-tab hard" onclick="selectTask('hard')">Hard</button>
+          <button class="task-tab reproduce" onclick="selectTask('reproduce')">Reproduce</button>
+        </div>
+        <div style="margin-top:10px;font-size:12px;color:var(--muted)" id="taskDesc">
+          Identify the root cause of each production incident. (10 incidents)
+        </div>
+      </div>
+
+      <div style="display:flex;gap:8px">
+        <button class="btn btn-primary" style="flex:1" id="startBtn" onclick="startEpisode()">&#9654; Start Episode</button>
+        <button class="btn btn-ghost" id="resetBtn" onclick="resetUI()" disabled>&#8635; Reset</button>
+      </div>
+
+      <div id="progressCard" style="display:none" class="card">
+        <div class="card-title">Progress</div>
+        <div class="step-indicator">
+          <span>Step <span id="stepCur">0</span> / <span id="stepMax">0</span></span>
+          <span>Avg Score: <span id="avgScore">—</span></span>
+        </div>
+        <div class="progress-bar"><div class="progress-fill" id="progressFill" style="width:0%"></div></div>
+      </div>
+
+      <div id="actionCard" style="display:none" class="card">
+        <div class="card-title">Your Response</div>
+
+        <div class="form-group">
+          <label>Root Cause</label>
+          <select id="rootCause">
+            <option value="">— select root cause —</option>
+            <option value="out_of_memory">out_of_memory</option>
+            <option value="disk_full">disk_full</option>
+            <option value="service_crash">service_crash</option>
+            <option value="config_error">config_error</option>
+            <option value="network_timeout">network_timeout</option>
+            <option value="dependency_failure">dependency_failure</option>
+            <option value="traffic_spike">traffic_spike</option>
+            <option value="deployment_failure">deployment_failure</option>
+            <option value="resource_leak">resource_leak</option>
+            <option value="certificate_expired">certificate_expired</option>
+          </select>
+        </div>
+
+        <div class="form-group" style="margin-top:12px">
+          <label>Severity</label>
+          <select id="severity">
+            <option value="">— select severity —</option>
+            <option value="p1">P1 — Total outage / complete service failure</option>
+            <option value="p2">P2 — Major degradation / significant impact</option>
+            <option value="p3">P3 — Partial impact / some users affected</option>
+            <option value="p4">P4 — Minor / no immediate user impact</option>
+          </select>
+        </div>
+
+        <div class="form-group" style="margin-top:12px">
+          <label>Immediate Remediation</label>
+          <select id="remediation">
+            <option value="">— select remediation —</option>
+            <option value="restart_service">restart_service</option>
+            <option value="rollback_deployment">rollback_deployment</option>
+            <option value="scale_up">scale_up</option>
+            <option value="clear_disk">clear_disk</option>
+            <option value="fix_config">fix_config</option>
+            <option value="block_traffic">block_traffic</option>
+            <option value="failover">failover</option>
+            <option value="renew_certificate">renew_certificate</option>
+            <option value="investigate">investigate</option>
+            <option value="add_resources">add_resources</option>
+          </select>
+        </div>
+
+        <div class="form-group" style="margin-top:12px;display:none" id="postmortemGroup">
+          <label>Postmortem Summary <span style="color:var(--red);font-size:10px;font-weight:700">REQUIRED</span></label>
+          <textarea id="postmortem" rows="7"
+            placeholder="Timeline: At 14:00 UTC deployment v4.1.0 was applied...&#10;&#10;Root Cause: The migration added a NOT NULL column without a DEFAULT...&#10;&#10;Fix Applied: Rolled back to v4.0.9 and added DEFAULT value...&#10;&#10;Prevention: Add migration pre-flight checks, require DEFAULT on NOT NULL columns..."></textarea>
+        </div>
+
+        <div class="form-group" style="margin-top:12px;display:none" id="reproGroup">
+          <label>Reproduction Steps <span style="color:var(--red);font-size:10px;font-weight:700">REQUIRED</span></label>
+          <textarea id="reproSteps" rows="8"
+            placeholder="Step 1: Set up a test service with the same memory limit (512Mi)...&#10;Step 2: Deploy the same version with the unbounded cache...&#10;Step 3: Generate 10x normal traffic using a load test tool...&#10;Step 4: Monitor memory usage — observe it climb toward the limit...&#10;Step 5: Confirm OOMKill in pod logs (exit code 137)..."></textarea>
+        </div>
+
+        <button class="btn btn-primary btn-full" style="margin-top:14px" id="submitBtn" onclick="submitAction()">
+          Submit Response
+        </button>
+      </div>
+
+      <div id="resultArea"></div>
+
+      <div id="logCard" style="display:none" class="card">
+        <div class="card-title">Episode Log</div>
+        <div class="episode-log" id="episodeLog"></div>
+      </div>
+
+    </div>
+  </div>
+</div>
+
+<script>
+const API = '';
+let currentTask = 'easy';
+let episodeActive = false;
+let stepNum = 0;
+let maxSteps = 0;
+let totalReward = 0;
+
+const taskDescriptions = {
+  easy: 'Identify the root cause of each production incident. (10 incidents)',
+  medium: 'Identify root cause, assess severity, and select immediate remediation. (10 incidents)',
+  hard: 'Full incident triage + write a detailed postmortem report. (5 incidents)',
+  reproduce: 'Identify the root cause + provide step-by-step instructions to reproduce the failure. (5 incidents)'
+};
+
+function setStatus(text, state) {
+  document.getElementById('statusText').textContent = text;
+  const d = document.getElementById('statusDot');
+  d.className = 'status-dot' + (state ? ' ' + state : '');
+}
+
+function selectTask(task) {
+  if (episodeActive) return;
+  currentTask = task;
+  document.querySelectorAll('.task-tab').forEach(t => t.classList.remove('active'));
+  document.querySelector('.task-tab.' + task).classList.add('active');
+  document.getElementById('taskDesc').textContent = taskDescriptions[task];
+}
+
+async function startEpisode() {
+  setStatus('Starting...', 'connected');
+  document.getElementById('startBtn').disabled = true;
+
+  try {
+    const res = await fetch(API + '/reset', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({task_id: currentTask})
+    });
+    if (!res.ok) throw new Error(await res.text());
+    const obs = await res.json();
+
+    episodeActive = true;
+    maxSteps = obs.max_steps;
+    stepNum = 0;
+    totalReward = 0;
+
+    document.getElementById('resetBtn').disabled = false;
+    document.getElementById('progressCard').style.display = 'block';
+    document.getElementById('actionCard').style.display = 'block';
+    document.getElementById('logCard').style.display = 'block';
+    document.getElementById('stepMax').textContent = maxSteps;
+    document.getElementById('stepCur').textContent = '0';
+    document.getElementById('avgScore').textContent = '—';
+    document.getElementById('progressFill').style.width = '0%';
+    document.getElementById('episodeLog').innerHTML = '';
+    document.getElementById('resultArea').innerHTML = '';
+    document.getElementById('postmortemGroup').style.display = currentTask === 'hard' ? 'block' : 'none';
+    document.getElementById('reproGroup').style.display = currentTask === 'reproduce' ? 'block' : 'none';
+
+    renderIncident(obs);
+    setStatus(obs.incident_id, 'connected');
+  } catch(e) {
+    setStatus('Error: ' + e.message, 'error');
+    document.getElementById('startBtn').disabled = false;
+  }
+}
+
+function resetUI() {
+  episodeActive = false;
+  document.getElementById('startBtn').disabled = false;
+  document.getElementById('resetBtn').disabled = true;
+  document.getElementById('submitBtn').disabled = false;
+  document.getElementById('progressCard').style.display = 'none';
+  document.getElementById('actionCard').style.display = 'none';
+  document.getElementById('logCard').style.display = 'none';
+  document.getElementById('resultArea').innerHTML = '';
+  document.getElementById('incidentPanel').innerHTML = '<div class="empty-state"><div class="icon">🚨</div><h3>No Active Incident</h3><p>Select a task difficulty and click <strong>Start Episode</strong></p></div>';
+  ['rootCause','severity','remediation','postmortem','reproSteps'].forEach(id => { const el = document.getElementById(id); if(el) el.value=''; });
+  setStatus('Ready');
+}
+
+function renderIncident(obs) {
+  const sevClass = obs.alert_title.startsWith('CRITICAL') ? 'p1'
+    : obs.alert_title.startsWith('HIGH') ? 'p2'
+    : obs.alert_title.startsWith('MEDIUM') ? 'p3' : 'p4';
+
+  const logLines = obs.error_logs.split('\n').map(line => {
+    if (/FATAL|CRITICAL/.test(line)) return '<span class="log-fatal">' + esc(line) + '</span>';
+    if (/ERROR/.test(line)) return '<span class="log-error">' + esc(line) + '</span>';
+    if (/WARN/.test(line)) return '<span class="log-warn">' + esc(line) + '</span>';
+    if (/INFO/.test(line)) return '<span class="log-info">' + esc(line) + '</span>';
+    return '<span class="log-default">' + esc(line) + '</span>';
+  }).join('\n');
+
+  const metricsHtml = Object.entries(obs.metrics).map(([k,v]) =>
+    '<div class="metric-item"><div class="metric-label">' + esc(k.replace(/_/g,' ')) + '</div><div class="metric-value">' + esc(v) + '</div></div>'
+  ).join('');
+
+  document.getElementById('incidentPanel').innerHTML =
+    '<div class="alert-banner ' + sevClass + '">' +
+      '<div class="alert-title">' + esc(obs.alert_title) + '</div>' +
+      '<div class="alert-meta">' +
+        '<span><span class="dot ' + sevClass + '"></span> ' + sevClass.toUpperCase() + '</span>' +
+        '<span>&#128295; ' + esc(obs.service_name) + '</span>' +
+        '<span>&#128203; ' + esc(obs.incident_id) + '</span>' +
+      '</div>' +
+    '</div>' +
+    '<div class="card"><div class="card-title">Description</div><div style="font-size:13px;line-height:1.7">' + esc(obs.alert_description) + '</div></div>' +
+    '<div class="card"><div class="card-title">Error Logs</div><div class="log-box">' + logLines + '</div></div>' +
+    '<div class="card"><div class="card-title">Metrics at Time of Incident</div><div class="metrics-grid">' + metricsHtml + '</div></div>' +
+    '<div class="card"><div class="card-title">Recent Changes</div><div style="font-size:13px;color:var(--yellow)">' + esc(obs.recent_changes) + '</div></div>' +
+    '<div class="card"><div class="card-title">On-Call Notes</div><div style="font-size:13px;color:var(--muted)">' + esc(obs.on_call_notes) + '</div></div>';
+}
+
+async function submitAction() {
+  const rootCause = document.getElementById('rootCause').value;
+  const severity = document.getElementById('severity').value;
+  const remediation = document.getElementById('remediation').value;
+  const postmortem = document.getElementById('postmortem').value.trim() || null;
+  const reproSteps = document.getElementById('reproSteps').value.trim() || null;
+
+  if (!rootCause || !severity || !remediation) { alert('Please select root cause, severity, and remediation.'); return; }
+  if (currentTask === 'hard' && !postmortem) { alert('Postmortem summary is required for the Hard task.'); return; }
+  if (currentTask === 'reproduce' && !reproSteps) { alert('Reproduction steps are required for the Reproduce task.'); return; }
+
+  document.getElementById('submitBtn').disabled = true;
+  setStatus('Submitting...', 'connected');
+
+  try {
+    const res = await fetch(API + '/step', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({root_cause: rootCause, severity, remediation, postmortem_summary: postmortem, reproduction_steps: reproSteps})
+    });
+    if (!res.ok) throw new Error(await res.text());
+    const result = await res.json();
+
+    stepNum++;
+    totalReward += result.reward.value;
+    const avg = totalReward / stepNum;
+
+    document.getElementById('stepCur').textContent = stepNum;
+    document.getElementById('avgScore').textContent = avg.toFixed(4);
+    document.getElementById('progressFill').style.width = ((stepNum / maxSteps) * 100) + '%';
+
+    const rv = result.reward.value;
+    const rc = rv >= 0.7 ? 'pos' : rv >= 0.3 ? 'mid' : 'neg';
+    const li = document.createElement('div');
+    li.className = 'log-entry';
+    li.innerHTML = '<span class="step-num">Step ' + stepNum + '</span><span class="reward-val ' + rc + '">' + rv.toFixed(4) + '</span><span class="fb">' + esc(result.reward.feedback) + '</span>';
+    document.getElementById('episodeLog').prepend(li);
+
+    showResult(result.reward);
+    ['rootCause','severity','remediation','postmortem','reproSteps'].forEach(id => { const el = document.getElementById(id); if(el) el.value=''; });
+
+    if (result.done) {
+      episodeActive = false;
+      document.getElementById('actionCard').style.display = 'none';
+      const cls = avg >= 0.7 ? 'green' : avg >= 0.3 ? 'yellow' : 'red';
+      document.getElementById('incidentPanel').innerHTML += '<div class="done-banner"><h3>Episode Complete</h3><div class="final-score" style="color:var(--' + cls + ')">' + avg.toFixed(4) + '</div><div style="font-size:13px;color:var(--muted);margin-top:8px">Mean reward across ' + stepNum + ' steps</div><button class="btn btn-ghost" style="margin-top:14px" onclick="startEpisode()">Play Again</button></div>';
+      setStatus('Episode complete');
+    } else {
+      renderIncident(result.observation);
+      document.getElementById('submitBtn').disabled = false;
+      setStatus(result.observation.incident_id, 'connected');
+    }
+  } catch(e) {
+    setStatus('Error: ' + e.message, 'error');
+    document.getElementById('submitBtn').disabled = false;
+  }
+}
+
+function showResult(reward) {
+  const s = reward.value;
+  const cls = s >= 0.7 ? 'success' : s >= 0.3 ? 'partial' : 'fail';
+  const rows = Object.entries(reward.breakdown || {})
+    .map(([k,v]) => '<div class="breakdown-row"><span>' + esc(k) + '</span><span style="font-family:monospace">' + (typeof v === 'number' ? v.toFixed(4) : esc(String(v))) + '</span></div>')
+    .join('');
+  document.getElementById('resultArea').innerHTML =
+    '<div class="result-card ' + cls + '">' +
+      '<div style="display:flex;align-items:center;gap:14px;margin-bottom:' + (rows ? '10' : '0') + 'px">' +
+        '<div class="score-big ' + cls + '">' + s.toFixed(4) + '</div>' +
+        '<div style="font-size:12px;color:var(--muted);flex:1">' + esc(reward.feedback) + '</div>' +
+      '</div>' +
+      (rows ? '<div>' + rows + '</div>' : '') +
+    '</div>';
+}
+
+function esc(s) {
+  if (s == null) return '';
+  return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+
+setStatus('Ready');
+</script>
+</body>
+</html>
