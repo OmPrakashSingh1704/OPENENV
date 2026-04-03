@@ -132,6 +132,10 @@ class SREIncidentEnv:
             task_description=self._task_data["description"],
         )
 
+    def close(self) -> None:
+        """No-op cleanup — satisfies the openenv-core async client interface."""
+        pass
+
     def get_episode_score(self) -> float:
         """Return the mean score across all steps taken so far (0.0-1.0)."""
         if not self._state or not self._state.episode_scores:
