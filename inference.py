@@ -37,7 +37,7 @@ from openai import OpenAI
 IMAGE_NAME = os.getenv("IMAGE_NAME")
 API_KEY = os.getenv("HF_TOKEN") or os.getenv("API_KEY")
 API_BASE_URL = os.getenv("API_BASE_URL", "https://router.huggingface.co/v1")
-MODEL_NAME = os.getenv("MODEL_NAME")
+MODEL_NAME = os.getenv("MODEL_NAME","meta-llama/Llama-3.1-8B-Instruct")
 TASK_NAME = os.getenv("TASK_NAME")  # if set, run only this task
 BENCHMARK = "sre-incident-response-env"
 
