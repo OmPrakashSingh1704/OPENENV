@@ -226,14 +226,15 @@ async def run_task(client: OpenAI, task_id: str) -> float:
             steps_taken = step
             log_step(step=step, action=action_str, reward=reward, done=done, error=error_msg)
 
-        score = sum(rewards) / len(rewards) if rewards else 0.0
-        score = min(max(score, 0.0), 1.0)
+        score = sum(rewards) / len(rewards) if rewards else 0.001
+        # Scores must be strictly within (0, 1) — clamp away from exact boundaries
+        score = max(0.001, min(0.999, score))
         success = score >= SUCCESS_SCORE_THRESHOLD
 
     except Exception as exc:
         print(f"[DEBUG] run_task error: {exc}", file=sys.stderr, flush=True)
         if not rewards:
-            rewards = [0.0]
+            rewards = [0.001]
             steps_taken = 0
 
     finally:
@@ -255,13 +256,11 @@ async def run_task(client: OpenAI, task_id: str) -> float:
 
 async def main() -> None:
     if not API_KEY:
-        print("Error: HF_TOKEN (or API_KEY) environment variable is not set.", file=sys.stderr)
-        sys.exit(1)
+        print("[WARN] HF_TOKEN/API_KEY not set — LLM calls will use fallback actions.", file=sys.stderr)
     if not MODEL_NAME:
-        print("Error: MODEL_NAME environment variable is not set.", file=sys.stderr)
-        sys.exit(1)
+        print("[WARN] MODEL_NAME not set — LLM calls will use fallback actions.", file=sys.stderr)
 
-    client = OpenAI(base_url=API_BASE_URL, api_key=API_KEY)
+    client = OpenAI(base_url=API_BASE_URL, api_key=API_KEY or "none")
 
     task_list = [TASK_NAME] if TASK_NAME else ["easy", "medium", "hard", "reproduce"]
 
