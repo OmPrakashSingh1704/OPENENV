@@ -222,6 +222,8 @@ async def run_task(client: OpenAI, task_id: str) -> float:
                 if not done and step_result.observation is not None:
                     obs_dict = step_result.observation.model_dump()
 
+            # Clamp each step reward strictly within (0, 1)
+            reward = max(0.001, min(0.999, reward))
             rewards.append(reward)
             steps_taken = step
             log_step(step=step, action=action_str, reward=reward, done=done, error=error_msg)
