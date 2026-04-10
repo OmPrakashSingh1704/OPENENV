@@ -277,7 +277,7 @@ def compute_reward(task_id: str, action_data: Dict, ground_truth: Dict) -> Dict[
 
     grader = graders.get(task_id)
     if grader is None:
-        return {"total": 0.0, "feedback": f"Unknown task_id: {task_id}"}
+        return {"total": 0.001, "feedback": f"Unknown task_id: {task_id}"}
 
     result = grader(action_data, ground_truth)
 
@@ -297,5 +297,6 @@ def compute_reward(task_id: str, action_data: Dict, ground_truth: Dict) -> Dict[
     if warnings:
         result["feedback"] += " | " + " ".join(warnings)
 
-    result["total"] = round(max(0.0, min(1.0, result["total"] * multiplier)), 4)
+    # Scores must be strictly within (0, 1) — never exactly 0.0 or 1.0
+    result["total"] = round(max(0.001, min(0.999, result["total"] * multiplier)), 4)
     return result
